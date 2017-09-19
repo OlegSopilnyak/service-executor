@@ -1,7 +1,7 @@
 package oleg.sopilnyak.repository;
 
 /**
- * Entity meta-information about service type for describe service
+ * Entity meta-information about service type for describe service immutable
  */
 public interface ServiceMeta {
     /**
