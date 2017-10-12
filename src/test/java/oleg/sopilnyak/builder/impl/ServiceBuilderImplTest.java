@@ -17,7 +17,7 @@ public class ServiceBuilderImplTest {
 
     @Test
     public void id() throws Exception {
-        builder.id("1-2-3-4");
+        builder.id("1-2-3-4").interfaceClass(ServiceBuilder.class);
         ServiceMeta srv = builder.build();
         assertEquals("1-2-3-4", srv.getId());
     }

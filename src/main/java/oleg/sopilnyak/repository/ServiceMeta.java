@@ -1,5 +1,7 @@
 package oleg.sopilnyak.repository;
 
+import java.lang.reflect.Method;
+
 /**
  * Entity meta-information about service type for describe service immutable
  */
@@ -51,5 +53,11 @@ public interface ServiceMeta {
          * @return extra parameters classes
          */
         Class[] getExtraParameterClasses();
+
+        /**
+         * To get Java method to execute operation
+         * @return method's instance
+         */
+        Method getOperationMethod();
     }
 }

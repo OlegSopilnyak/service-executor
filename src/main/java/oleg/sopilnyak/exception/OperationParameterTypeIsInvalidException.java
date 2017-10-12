@@ -4,8 +4,8 @@ package oleg.sopilnyak.exception;
  * Exception throws when call try to execute operation of service with wrong type of parameter
  */
 public class OperationParameterTypeIsInvalidException extends ServiceCallException{
-    private String operationName;
-    private int parameterOrder;
+    private final String operationName;
+    private final int parameterOrder;
     /**
      * Constructs a new exception with the specified detail message.  The
      * cause is not initialized, and may subsequently be initialized by

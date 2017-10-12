@@ -4,9 +4,14 @@ import oleg.sopilnyak.builder.OperationBuilder;
 import oleg.sopilnyak.builder.ServiceBuilder;
 import oleg.sopilnyak.repository.ServiceMeta;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import static org.springframework.util.StringUtils.isEmpty;
 
 /**
  * Builder builder for service meta
@@ -15,7 +20,7 @@ import java.util.List;
 public class ServiceBuilderImpl implements ServiceBuilder{
     private String id;
     private Class facade;
-    private List<ServiceMeta.Operation> operations = new ArrayList<>();
+    private final List<ServiceMeta.Operation> operations = new ArrayList<>();
     /**
      * Setup id of service
      *
@@ -59,7 +64,18 @@ public class ServiceBuilderImpl implements ServiceBuilder{
      */
     @Override
     public ServiceMeta build() {
-        return null;
+        final String id = isEmpty(this.id) ? facade.getClass().getName() : this.id;
+        final Class<?> interfaceClass;
+        try {
+            interfaceClass = facade == null ? Class.forName(id) : facade;
+        } catch (ClassNotFoundException e) {
+            return null;
+        }
+        final ServiceMeta.Operation declaredOperations[] = this.operations.isEmpty() ?
+                collectInterfaceOperations(interfaceClass)
+                : this.operations.toArray(new ServiceMeta.Operation[0]);
+
+        return new ServiceMetaImpl(id, interfaceClass, declaredOperations);
     }
 
     /**
@@ -69,6 +85,59 @@ public class ServiceBuilderImpl implements ServiceBuilder{
      */
     @Override
     public OperationBuilder buildOperation() {
-        return null;
+        return new OperationBuilderImpl();
+    }
+
+    // private methods
+
+    private static ServiceMeta.Operation[] collectInterfaceOperations(Class<?> interfaceClass) {
+        final Method[] methods = interfaceClass.getDeclaredMethods();
+        return Stream.of(methods).parallel()
+                .map(OperationBuilderImpl::new)
+                .map(OperationBuilderImpl::build)
+                .collect(Collectors.toList())
+                .toArray(new ServiceMeta.Operation[0]);
+    }
+
+    // inner classes
+    private static class ServiceMetaImpl implements ServiceMeta{
+        private final String id;
+        private final Class<?> interfaceClass;
+        private final Operation[] operations;
+
+        private ServiceMetaImpl(String id, Class<?> interfaceClass, Operation[] operations){
+            this.id = id;
+            this.interfaceClass = interfaceClass;
+            this.operations = operations;
+        }
+        /**
+         * Get id of service (usually it name of interface class)
+         *
+         * @return service-id
+         */
+        @Override
+        public String getId() {
+            return id;
+        }
+
+        /**
+         * Class - interface of service to call operations
+         *
+         * @return class
+         */
+        @Override
+        public Class<?> getInterfaceClass() {
+            return interfaceClass;
+        }
+
+        /**
+         * To get an array of available operations
+         *
+         * @return array of operation
+         */
+        @Override
+        public Operation[] getOperations() {
+            return Arrays.copyOf(operations, operations.length);
+        }
     }
 }
