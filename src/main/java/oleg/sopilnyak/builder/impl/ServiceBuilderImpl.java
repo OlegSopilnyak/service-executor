@@ -21,6 +21,16 @@ public class ServiceBuilderImpl implements ServiceBuilder{
     private String id;
     private Class facade;
     private final List<ServiceMeta.Operation> operations = new ArrayList<>();
+
+    public ServiceBuilderImpl() {
+    }
+
+    public ServiceBuilderImpl(ServiceMeta meta) {
+        this.id(meta.getId());
+        this.operations (meta.getOperations());
+        this.interfaceClass(meta.getInterfaceClass());
+    }
+
     /**
      * Setup id of service
      *
@@ -138,6 +148,16 @@ public class ServiceBuilderImpl implements ServiceBuilder{
         @Override
         public Operation[] getOperations() {
             return Arrays.copyOf(operations, operations.length);
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder sb = new StringBuilder("ServiceMeta{");
+            sb.append("id='").append(id).append('\'');
+            sb.append(", interfaceClass=").append(interfaceClass);
+            sb.append(", operations=").append(Arrays.toString(operations));
+            sb.append('}');
+            return sb.toString();
         }
     }
 }

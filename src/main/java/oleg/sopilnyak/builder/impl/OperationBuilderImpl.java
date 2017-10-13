@@ -6,14 +6,14 @@ import oleg.sopilnyak.repository.ServiceMeta;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 
-class OperationBuilderImpl implements OperationBuilder {
+public class OperationBuilderImpl implements OperationBuilder {
     private String name;
     private Class<?> parameterClass;
     private Class<?> returnClass;
     private Class<?>[] extraParameterClasses;
     private Method operationMethod;
 
-    OperationBuilderImpl(ServiceMeta.Operation operation) {
+    public OperationBuilderImpl(ServiceMeta.Operation operation) {
         name = operation.getName();
         parameterClass = operation.getParameterClass();
         extraParameterClasses = operation.getExtraParameterClasses();
@@ -150,6 +150,17 @@ class OperationBuilderImpl implements OperationBuilder {
         @Override
         public Method getOperationMethod() {
             return operationMethod;
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder sb = new StringBuilder("OperationMeta{");
+            sb.append("name='").append(name).append('\'');
+            sb.append(", parameterClass=").append(parameterClass);
+            sb.append(", resultClass=").append(resultClass);
+            sb.append(", extraParameterClasses=").append(Arrays.toString(extraParameterClasses));
+            sb.append('}');
+            return sb.toString();
         }
     }
 }

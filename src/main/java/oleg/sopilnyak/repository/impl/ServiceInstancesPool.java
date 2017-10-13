@@ -1,5 +1,6 @@
 package oleg.sopilnyak.repository.impl;
 
+import oleg.sopilnyak.builder.impl.OperationBuilderImpl;
 import oleg.sopilnyak.call.Call;
 import oleg.sopilnyak.exception.OperationNotFoundException;
 import oleg.sopilnyak.exception.OperationParameterTypeIsInvalidException;
@@ -17,25 +18,64 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * Service service-instances pool
  */
-class ServiceInstancesPool {
+public class ServiceInstancesPool implements ServiceMeta {
     private static final Logger log = LoggerFactory.getLogger(ServiceInstancesPool.class);
+    private volatile boolean active = false;
+
     private String serviceId;
     private Class<?> interfaceClass;
     // map of allowed service operations
     private Map<String, Set<ServiceMeta.Operation>> operations = new HashMap<>();
+
     private int minimumInstances = 2;
     private int maximumInstances = 10;
     private Function instanceBuilder;
-    // set of available instances of service realization
+
+    // set of available instances of service instances
     private Stack available = new Stack();
     // set of busy instances of service realization
     private Set inAction = new LinkedHashSet();
+
     // Look for buffer
     private final Lock instancesLock = new ReentrantLock();
+
+    public ServiceInstancesPool(ServiceMeta service, Function builder) {
+        serviceId = service.getId();
+        interfaceClass = service.getInterfaceClass();
+        instanceBuilder = builder;
+        importOperations(service.getOperations());
+    }
+
+    /**
+     * To start working service instances pool
+     * @throws ServiceExecutionException if cannot make appropriate instances
+     */
+    public void start() throws ServiceExecutionException {
+        if (!active) {
+            log.info("Starting pool for {}", serviceId);
+            active = true;
+            available.clear();
+            inAction.clear();
+            try {
+                IntStream.range(0, minimumInstances).forEach(i -> registerServiceInstance());
+            }catch (Throwable t){
+                throw new ServiceExecutionException("Cannot start "+serviceId, t);
+            }
+        }
+    }
+
+    /**
+     * To stop working with service instances
+     */
+    public void shutdown(){
+        active = false;
+    }
 
     /**
      * Prepare call for remote execution
@@ -46,18 +86,72 @@ class ServiceInstancesPool {
         return new ServiceCall();
     }
 
-    // private methods
+    public void setMinimumInstances(int minimumInstances) {
+        this.minimumInstances = minimumInstances;
+    }
 
-    private void freeServiceInstance(Object serviceInstance) {
-        instancesLock.lock();
-        try{
-            if(inAction.remove(serviceInstance)){
-                available.push(serviceInstance);
-            }else {
-                log.error("Strange service instance {}", serviceInstance);
-            }
+    public void setMaximumInstances(int maximumInstances) {
+        this.maximumInstances = maximumInstances;
+    }
+
+    /**
+     * Get id of service (usually it name of interface class)
+     *
+     * @return service-id
+     */
+    @Override
+    public String getId() {
+        return serviceId;
+    }
+
+    /**
+     * Class - interface of service to call operations
+     *
+     * @return class
+     */
+    @Override
+    public Class<?> getInterfaceClass() {
+        return interfaceClass;
+    }
+
+    /**
+     * To get an array of available operations
+     *
+     * @return array of operation
+     */
+    @Override
+    public Operation[] getOperations() {
+        return operations.values().stream()
+                .flatMap(Collection::stream)
+                .map(OperationBuilderImpl::new)
+                .map(OperationBuilderImpl::build)
+                .collect(Collectors.toList()).toArray(new Operation[0]);
+    }
+
+    // private methods
+    private void importOperations(Operation[] operations) {
+        log.debug("Importing {} operations", operations.length);
+    }
+
+    private Object executeCall(final ServiceCall call) throws ServiceCallException {
+        log.info("Preparing operation {} for service {}", call.name, serviceId);
+        final ServiceMeta.Operation operation = call.validateCall();
+        final Method operationMethod = operation.getOperationMethod();
+
+        final Object serviceInstance = findFreeInstance();
+        final Object[] parameters = call.makeInvokeParameters();
+
+        try {
+            log.info("Executing operation {} for service {}", call.name, serviceId);
+            return operationMethod.invoke(serviceInstance, parameters);
+        } catch (Throwable t) {
+            // something went wrong
+            final StringBuilder msg = new StringBuilder("Cannot execute operation ")
+                    .append(call.name).append(" of service ").append(serviceId);
+            log.error(msg.toString(), t);
+            throw new ServiceExecutionException(msg.toString(), t);
         } finally {
-            instancesLock.unlock();
+            freeServiceInstance(serviceInstance);
         }
     }
 
@@ -69,15 +163,19 @@ class ServiceInstancesPool {
                     log.warn("Services Pool for {} is exhausted.", serviceId);
                     waitForFreeInstances(instancesLock);
                 } else {
-                    log.debug("Making new service instance for {}", serviceId);
-                    final Object serviceInstance = instanceBuilder.apply(interfaceClass);
-                    available.push(serviceInstance);
+                    registerServiceInstance();
                 }
             }
             return returnInActionService();
         } finally {
             instancesLock.unlock();
         }
+    }
+
+    private void registerServiceInstance(){
+        log.debug("Making new service instance for {}", serviceId);
+        final Object serviceInstance = instanceBuilder.apply(interfaceClass);
+        available.push(serviceInstance);
     }
 
     private void waitForFreeInstances(Lock instancesLock) {
@@ -98,6 +196,18 @@ class ServiceInstancesPool {
         return service;
     }
 
+    private void freeServiceInstance(Object serviceInstance) {
+        instancesLock.lock();
+        try {
+            if (inAction.remove(serviceInstance)) {
+                available.push(serviceInstance);
+            } else {
+                log.error("Strange service instance {}", serviceInstance);
+            }
+        } finally {
+            instancesLock.unlock();
+        }
+    }
     // inner classes
     private class ServiceCall implements Call {
 
@@ -149,30 +259,13 @@ class ServiceInstancesPool {
          */
         @Override
         public Object execute() throws ServiceCallException {
-            log.info("Preparing operation {} for service {}", name, serviceId);
-            final ServiceMeta.Operation operation = validateCall();
-            final Method operationMethod = operation.getOperationMethod();
-
-            final Object serviceInstance = findFreeInstance();
-            final Object[] parameters = makeInvokeParameters();
-            try {
-                log.info("Executing operation {} for service {}", name, serviceId);
-                return operationMethod.invoke(serviceInstance, parameters);
-            } catch (Throwable t) {
-                final StringBuilder msg = new StringBuilder("Cannot execute operation ")
-                        .append(name).append(" of service ").append(serviceId);
-                log.error(msg.toString(), t);
-                throw new ServiceExecutionException(msg.toString(), t);
-            } finally {
-                freeServiceInstance(serviceInstance);
-            }
+            return executeCall(this);
         }
 
         // private methods
-
         private Object[] makeInvokeParameters() {
             return ObjectUtils.isEmpty(parameter) ? new Object[0]
-                    : ObjectUtils.isEmpty(extraParameter) ? new Object[]{parameter} : new Object[]{parameter,extraParameter};
+                    : ObjectUtils.isEmpty(extraParameter) ? new Object[]{parameter} : new Object[]{parameter, extraParameter};
         }
 
         private ServiceMeta.Operation validateCall() throws ServiceCallException {

@@ -2,13 +2,20 @@ package oleg.sopilnyak.repository.impl;
 
 import lombok.extern.slf4j.Slf4j;
 import oleg.sopilnyak.builder.ServiceBuilder;
+import oleg.sopilnyak.builder.impl.ServiceBuilderImpl;
 import oleg.sopilnyak.call.Call;
 import oleg.sopilnyak.exception.NoRegisteredServiceException;
 import oleg.sopilnyak.exception.ServiceAlreadyRegisteredException;
 import oleg.sopilnyak.exception.ServiceCallException;
 import oleg.sopilnyak.repository.Repository;
 import oleg.sopilnyak.repository.ServiceMeta;
+import org.springframework.beans.factory.annotation.Value;
 
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 /**
@@ -16,6 +23,20 @@ import java.util.function.Function;
  */
 @Slf4j
 public class RepositoryImpl implements Repository{
+    private final Lock writePoolLock = new ReentrantLock();
+    private final Map<String, ServiceInstancesPool> pools = new ConcurrentHashMap<>();
+
+    @Value("${service.pool.start.instances:2}")
+    private int minimumActiveInstances;
+    @Value("${service.pool.maximum.instances:10}")
+    private int maximumActiveInstances = 10;
+
+    /**
+     * Shutdown all service pools
+     */
+    public void shutdown(){
+        pools.values().forEach(ServiceInstancesPool::shutdown);
+    }
     /**
      * Prepare call to remote operation
      *
@@ -25,7 +46,10 @@ public class RepositoryImpl implements Repository{
      */
     @Override
     public Call prepareCall(Class serviceInterface) throws NoRegisteredServiceException {
-        return null;
+        final Optional<ServiceInstancesPool> optional = Optional.ofNullable(pools.get(serviceInterface.getName()));
+        return optional
+                .orElseThrow(()-> new NoRegisteredServiceException("No registered service of "+serviceInterface))
+                .dedicateCall();
     }
 
     /**
@@ -37,7 +61,10 @@ public class RepositoryImpl implements Repository{
      */
     @Override
     public Call prepareCall(String serviceID) throws NoRegisteredServiceException {
-        return null;
+        final Optional<ServiceInstancesPool> optional = Optional.ofNullable(pools.get(serviceID));
+        return optional
+                .orElseThrow(()-> new NoRegisteredServiceException("No registered service with id: "+serviceID))
+                .dedicateCall();
     }
 
     /**
@@ -74,7 +101,28 @@ public class RepositoryImpl implements Repository{
      */
     @Override
     public void register(ServiceMeta metaInfo, Function builder) throws ServiceAlreadyRegisteredException, ServiceCallException {
+        writePoolLock.lock();
+        try{
+            final String serviceId = metaInfo.getId();
 
+            log.debug("Try to register service with id:{}", serviceId);
+            if (pools.containsKey(serviceId)){
+                log.error("Service with id:{} already registered.", serviceId);
+                throw new ServiceAlreadyRegisteredException("Service with id:"+serviceId+" already registered.");
+            }
+
+            log.debug("Try to make instances pool for {}", metaInfo);
+            final ServiceInstancesPool pool = makePool(metaInfo, builder);
+            pools.put(serviceId, pool);
+            // put pool with class-name as id
+            final String interfaceId = metaInfo.getInterfaceClass().getName();
+            pools.putIfAbsent(interfaceId, pool);
+
+            log.debug("Try to start instances pool for {}", serviceId);
+            pool.start();
+        }finally {
+            writePoolLock.unlock();
+        }
     }
 
     /**
@@ -84,6 +132,14 @@ public class RepositoryImpl implements Repository{
      */
     @Override
     public ServiceBuilder serviceBuilder() {
-        return null;
+        return new ServiceBuilderImpl();
+    }
+
+    // private methods
+    private ServiceInstancesPool makePool(ServiceMeta service, Function builder){
+        final ServiceInstancesPool pool = new ServiceInstancesPool(service, builder);
+        pool.setMinimumInstances(minimumActiveInstances);
+        pool.setMaximumInstances(maximumActiveInstances);
+        return pool;
     }
 }

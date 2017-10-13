@@ -4,17 +4,21 @@ import oleg.sopilnyak.builder.OperationBuilder;
 import oleg.sopilnyak.repository.ServiceMeta;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 
 import java.lang.reflect.Method;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class OperationBuilderImplTest {
     private OperationBuilder operationBuilder;
 
     @Before
-    public void setUp() throws Exception {
+    public void setUp(){
         operationBuilder = new OperationBuilderImpl();
     }
 
@@ -58,39 +62,33 @@ public class OperationBuilderImplTest {
 
     @Test
     public void method() throws NoSuchMethodException {
-        Method toString = Double.class.getDeclaredMethod("toString", new Class[]{});
+        Method toString = Double.class.getDeclaredMethod("toString");
         ServiceMeta.Operation fake = fakeOperation(), applied = operationBuilder.apply(fake).build();
         operationBuilder.method(toString);
 
         assertEquals(toString, operationBuilder.build().getOperationMethod());
     }
+
     // private methods
-    private ServiceMeta.Operation fakeOperation(){
-        return new ServiceMeta.Operation() {
-            @Override
-            public String getName() {
-                return "fake";
-            }
+    private ServiceMeta.Operation fakeOperation() {
+        final ServiceMeta.Operation operation = mock(ServiceMeta.Operation.class);
+        when(operation.getName()).thenReturn("fake");
+        when(operation.getParameterClass()).thenAnswer(new AnswerClass(String.class));
+        when(operation.getResultClass()).thenAnswer(new AnswerClass(Double.class));
+        when(operation.getExtraParameterClasses()).thenReturn(new Class[0]);
+        return operation;
+    }
 
-            @Override
-            public Class<?> getParameterClass() {
-                return String.class;
-            }
+    // inner classes
+    private static class AnswerClass implements Answer<Class<?>> {
+        private final Class<?> answerClass;
 
-            @Override
-            public Class<?> getResultClass() {
-                return Double.class;
-            }
+        AnswerClass(Class<?> answerClass) {
+            this.answerClass = answerClass;
+        }
 
-            @Override
-            public Class[] getExtraParameterClasses() {
-                return new Class[0];
-            }
-
-            @Override
-            public Method getOperationMethod() {
-                return null;
-            }
-        };
+        public Class<?> answer(InvocationOnMock invocation){
+            return answerClass;
+        }
     }
 }
