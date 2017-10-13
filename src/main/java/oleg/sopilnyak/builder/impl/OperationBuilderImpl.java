@@ -40,12 +40,13 @@ class OperationBuilderImpl implements OperationBuilder {
     }
 
     @Override
-    public void apply(ServiceMeta.Operation operation) {
+    public OperationBuilder apply(ServiceMeta.Operation operation) {
         name = operation.getName();
         parameterClass = operation.getParameterClass();
         extraParameterClasses = operation.getExtraParameterClasses();
         returnClass = operation.getResultClass();
         operationMethod = null;
+        return this;
     }
 
 
@@ -83,6 +84,8 @@ class OperationBuilderImpl implements OperationBuilder {
     public ServiceMeta.Operation build() {
         return new OperationImpl(this);
     }
+
+    // inner classes
     private static class OperationImpl implements ServiceMeta.Operation{
 
         private final String name;

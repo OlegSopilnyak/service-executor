@@ -14,7 +14,7 @@ public interface OperationBuilder {
     OperationBuilder parameterExtra(Class... paramClass);
     OperationBuilder method(Method method);
 
-    void apply(ServiceMeta.Operation operation);
+    OperationBuilder apply(ServiceMeta.Operation operation);
 
     ServiceMeta.Operation build();
 }

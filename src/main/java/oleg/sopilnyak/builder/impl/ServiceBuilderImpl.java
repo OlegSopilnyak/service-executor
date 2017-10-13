@@ -84,7 +84,7 @@ public class ServiceBuilderImpl implements ServiceBuilder{
      * @return operation builder
      */
     @Override
-    public OperationBuilder buildOperation() {
+    public OperationBuilder operationBuilder() {
         return new OperationBuilderImpl();
     }
 

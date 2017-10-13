@@ -37,5 +37,5 @@ public interface ServiceBuilder {
      * Get service operation builder
      * @return operation builder
      */
-    OperationBuilder buildOperation();
+    OperationBuilder operationBuilder();
 }
