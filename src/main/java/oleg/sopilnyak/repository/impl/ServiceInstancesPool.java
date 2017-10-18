@@ -1,11 +1,10 @@
 package oleg.sopilnyak.repository.impl;
 
 import oleg.sopilnyak.builder.impl.OperationBuilderImpl;
+import oleg.sopilnyak.builder.impl.ServiceBuilderImpl;
 import oleg.sopilnyak.call.Call;
-import oleg.sopilnyak.exception.OperationNotFoundException;
-import oleg.sopilnyak.exception.OperationParameterTypeIsInvalidException;
-import oleg.sopilnyak.exception.ServiceCallException;
-import oleg.sopilnyak.exception.ServiceExecutionException;
+import oleg.sopilnyak.exception.*;
+import oleg.sopilnyak.repository.ServiceImpl;
 import oleg.sopilnyak.repository.ServiceMeta;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,13 +17,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import java.util.stream.Stream;
+
+import static java.util.Arrays.asList;
+import static java.util.stream.Collectors.toList;
 
 /**
  * Service service-instances pool
  */
-public class ServiceInstancesPool implements ServiceMeta {
+public class ServiceInstancesPool implements ServiceMeta, ServiceImpl {
     private static final Logger log = LoggerFactory.getLogger(ServiceInstancesPool.class);
     private volatile boolean active = false;
 
@@ -42,7 +43,7 @@ public class ServiceInstancesPool implements ServiceMeta {
     // set of busy instances of service realization
     private Set inAction = new LinkedHashSet();
 
-    // Look for buffer
+    // Look for instances containers
     private final Lock instancesLock = new ReentrantLock();
 
     public ServiceInstancesPool(ServiceMeta service, Function builder) {
@@ -54,18 +55,21 @@ public class ServiceInstancesPool implements ServiceMeta {
 
     /**
      * To start working service instances pool
+     *
      * @throws ServiceExecutionException if cannot make appropriate instances
      */
     public void start() throws ServiceExecutionException {
         if (!active) {
-            log.info("Starting pool for {}", serviceId);
+            log.info("Starting pool for service-id: {} min: {} max: {}", serviceId, minimumInstances, maximumInstances);
             active = true;
             available.clear();
             inAction.clear();
             try {
-                IntStream.range(0, minimumInstances).forEach(i -> registerServiceInstance());
-            }catch (Throwable t){
-                throw new ServiceExecutionException("Cannot start "+serviceId, t);
+                for (int i = 0; i < minimumInstances; i++) {
+                    registerServiceInstance();
+                }
+            } catch (Throwable t) {
+                throw new ServiceExecutionException("Cannot start " + serviceId, t);
             }
         }
     }
@@ -73,17 +77,17 @@ public class ServiceInstancesPool implements ServiceMeta {
     /**
      * To stop working with service instances
      */
-    public void shutdown(){
+    public void shutdown() {
         active = false;
     }
 
     /**
-     * Prepare call for remote execution
+     * To get service meta information
      *
-     * @return call instance
+     * @return meta-info of service
      */
-    public Call dedicateCall() {
-        return new ServiceCall();
+    public ServiceMeta getMeta() {
+        return new ServiceBuilderImpl(this).build();
     }
 
     public void setMinimumInstances(int minimumInstances) {
@@ -115,6 +119,40 @@ public class ServiceInstancesPool implements ServiceMeta {
     }
 
     /**
+     * To get class facade of service
+     *
+     * @return type of facade
+     */
+    @Override
+    public Class<?> getFacadeClass() {
+        return interfaceClass;
+    }
+
+    /**
+     * To get entity to invoke operation of service
+     *
+     * @param name the name of operation
+     * @return entity to invoke operation call
+     * @throws OperationNotFoundException thrown if cannot get entity
+     */
+    @Override
+    public Call getOperationCall(String name) throws OperationNotFoundException {
+        if (operations.get(name) != null) {
+            return new OperationCall(name);
+        } else throw new OperationNotFoundException("Not registered", name);
+    }
+
+    /**
+     * To get array of operations execute enititie
+     *
+     * @return array of calls
+     */
+    @Override
+    public Call[] getCallOperations() {
+        return operations.keySet().stream().map(OperationCall::new).collect(toList()).toArray(new Call[0]);
+    }
+
+    /**
      * To get an array of available operations
      *
      * @return array of operation
@@ -125,25 +163,77 @@ public class ServiceInstancesPool implements ServiceMeta {
                 .flatMap(Collection::stream)
                 .map(OperationBuilderImpl::new)
                 .map(OperationBuilderImpl::build)
-                .collect(Collectors.toList()).toArray(new Operation[0]);
+                .collect(toList()).toArray(new Operation[0]);
     }
 
     // private methods
-    private void importOperations(Operation[] operations) {
-        log.debug("Importing {} operations", operations.length);
+    private void checkPoolState() {
+        if (!active) throw new IllegalStateException("Pool should be active.");
     }
 
-    private Object executeCall(final ServiceCall call) throws ServiceCallException {
+    private void importOperations(Operation[] importOperations) {// TODO realize it at all
+        log.debug("Importing {} operations", importOperations.length);
+        final Method[] methods = interfaceClass.getDeclaredMethods();
+        this.operations.clear();
+        Stream.of(importOperations).map(operation -> accept(operation, methods))
+                .forEachOrdered(imported -> operations.computeIfAbsent(imported.getName(), (k) -> new LinkedHashSet<>()).add(imported));
+    }
+
+    private Operation accept(Operation operation, Method[] methods) {
+        final OperationBuilderImpl builder = new OperationBuilderImpl(operation);
+        for (Method method : methods) {
+            if (isSuit(operation, method)) {
+                builder.method(method);
+                break;
+            }
+        }
+        return builder.build();
+    }
+
+    private static boolean isSuit(Operation operation, Method method) {
+        return isSuitNames(operation, method) && isSuitParameters(operation, method) && isSuitResult(operation, method);
+    }
+
+    private static boolean isSuitNames(Operation operation, Method method) {
+        return method.getName().equals(operation.getName());
+    }
+
+    private static boolean isSuitParameters(Operation operation, Method method) {
+        final int params = method.getParameterCount();
+        return
+                params == 0 ? operation.getParameterClass().equals(Void.class)
+                        : params == 1 ? operation.getParameterClass().equals(method.getParameterTypes()[0])
+                        : operation.getParameterClass().equals(method.getParameterTypes()[0]) &&
+                        operation.getExtraParameterClasses().equals(method.getParameterTypes()[1]);
+    }
+
+    private static boolean isSuitResult(Operation operation, Method method) {
+        return
+                operation.getResultClass() == Void.class && "void".equalsIgnoreCase(method.getReturnType().getName()) ||
+                        method.getReturnType() == operation.getResultClass();
+    }
+
+    private Object executeCall(final OperationCall call, Object param, Object... extra) throws ServiceCallException {
+        checkPoolState();
         log.info("Preparing operation {} for service {}", call.name, serviceId);
-        final ServiceMeta.Operation operation = call.validateCall();
-        final Method operationMethod = operation.getOperationMethod();
+        Object[] parameters = makeInvokeParameters(param, extra);
+        final Method operationMethod = call.getValidOperation(parameters).getOperationMethod();
 
         final Object serviceInstance = findFreeInstance();
-        final Object[] parameters = call.makeInvokeParameters();
+        log.debug("Found free service instance {}", serviceInstance);
 
         try {
-            log.info("Executing operation {} for service {}", call.name, serviceId);
-            return operationMethod.invoke(serviceInstance, parameters);
+            log.debug("Executing operation {} for service {}", call.name, serviceId);
+            final int methodParametersCount = operationMethod.getParameterCount();
+            if (methodParametersCount < parameters.length){
+                log.warn("Reject last {} actual parameters for operation .{}. of service '{}'", parameters.length-methodParametersCount, call.getOperationName(), serviceId);
+                parameters = Arrays.copyOf(parameters, methodParametersCount);
+            }
+            // execute operation method
+            final Object result = operationMethod.invoke(serviceInstance, parameters);
+            // return execution result
+            log.debug("Execution result operation {} for service {} = '{}'", call.name, serviceId, result);
+            return result;
         } catch (Throwable t) {
             // something went wrong
             final StringBuilder msg = new StringBuilder("Cannot execute operation ")
@@ -151,11 +241,19 @@ public class ServiceInstancesPool implements ServiceMeta {
             log.error(msg.toString(), t);
             throw new ServiceExecutionException(msg.toString(), t);
         } finally {
+            log.debug("Return to free service instances {}", serviceInstance);
             freeServiceInstance(serviceInstance);
         }
     }
 
-    private Object findFreeInstance() {
+    private static Object[] makeInvokeParameters(Object param, Object[] extra) {
+        if (ObjectUtils.isEmpty(param)) return new Object[0];
+        final List params = new ArrayList(Collections.singletonList(param));
+        if (!ObjectUtils.isEmpty(extra)) params.addAll(asList(extra));
+        return params.toArray();
+    }
+
+    private Object findFreeInstance() throws ServiceCallException {
         instancesLock.lock();
         try {
             if (available.isEmpty()) {
@@ -167,15 +265,23 @@ public class ServiceInstancesPool implements ServiceMeta {
                 }
             }
             return returnInActionService();
+        } catch (InvalidServiceMetaInformation e) {
+            log.error("Wrong service-meta ", e);
+            shutdown();
+            throw new ServiceCallException("Pool is not valid", e);
         } finally {
             instancesLock.unlock();
         }
     }
 
-    private void registerServiceInstance(){
-        log.debug("Making new service instance for {}", serviceId);
+    private void registerServiceInstance() throws InvalidServiceMetaInformation {
+        log.debug("Making new service instance for Id: {} / Facade: '{}'", serviceId, interfaceClass);
         final Object serviceInstance = instanceBuilder.apply(interfaceClass);
-        available.push(serviceInstance);
+        if (interfaceClass.isInstance(serviceInstance)) {
+            available.push(serviceInstance);
+        } else {
+            throw new InvalidServiceMetaInformation("Incompatible facade interface and built realization.");
+        }
     }
 
     private void waitForFreeInstances(Lock instancesLock) {
@@ -199,7 +305,7 @@ public class ServiceInstancesPool implements ServiceMeta {
     private void freeServiceInstance(Object serviceInstance) {
         instancesLock.lock();
         try {
-            if (inAction.remove(serviceInstance)) {
+            if (inAction.remove(serviceInstance) && active) {
                 available.push(serviceInstance);
             } else {
                 log.error("Strange service instance {}", serviceInstance);
@@ -208,72 +314,83 @@ public class ServiceInstancesPool implements ServiceMeta {
             instancesLock.unlock();
         }
     }
+
+    /**
+     * For test purposes only
+     *
+     * @return available instances stack
+     */
+    Stack getAvailable() {
+        return available;
+    }
+
+    /**
+     * For test purposes only
+     *
+     * @return in-action instances set
+     */
+    Set getInAction() {
+        return inAction;
+    }
+
+    /**
+     * For test purposes only
+     *
+     * @return true if active
+     */
+    boolean isActive() {
+        return active;
+    }
+
     // inner classes
-    private class ServiceCall implements Call {
+    private class OperationCall<R> implements Call<R, Object> {
+        private final String name;
 
-        private String name;
-        private Object parameter;
-        private Object extraParameter;
-
-        /**
-         * Setup name of operation
-         *
-         * @param name name of service operation to execute
-         * @return reference to entity
-         */
-        @Override
-        public Call operation(String name) {
+        public OperationCall(String name) {
             this.name = name;
-            return this;
         }
 
         /**
-         * Setup parameter of service method
+         * To get a name of called operation
          *
-         * @param param actual parameter
-         * @return reference to entity
+         * @return the name of operation
          */
         @Override
-        public Call parameter(Object param) {
-            this.parameter = param;
-            return this;
+        public String getOperationName() {
+            return name;
         }
 
         /**
-         * Setup extra-parameters of service method
+         * To invoke operation of service
          *
-         * @param extra actual parameter
-         * @return reference to entity
+         * @param param obligated parameter of operation
+         * @param extra extra parameters of operation
+         * @return result of operation
+         * @throws ServiceCallException throws if cannot execute operation
          */
         @Override
-        public Call parameterEx(Object extra) {
-            this.extraParameter = extra;
-            return this;
+        public R invoke(Object param, Object... extra) throws ServiceCallException {
+            return (R) executeCall(this, param, extra);
         }
 
         /**
-         * Execute remote call and return the result
+         * To invoke operation of service without parameters
          *
          * @return result of operation
-         * @throws ServiceCallException if something went wrong
+         * @throws ServiceCallException throws if cannot execute operation
          */
         @Override
-        public Object execute() throws ServiceCallException {
-            return executeCall(this);
+        public R invoke() throws ServiceCallException {
+            return (R) executeCall(this, null);
         }
 
         // private methods
-        private Object[] makeInvokeParameters() {
-            return ObjectUtils.isEmpty(parameter) ? new Object[0]
-                    : ObjectUtils.isEmpty(extraParameter) ? new Object[]{parameter} : new Object[]{parameter, extraParameter};
-        }
-
-        private ServiceMeta.Operation validateCall() throws ServiceCallException {
+        private ServiceMeta.Operation getValidOperation(Object[] params) throws ServiceCallException {
             if (StringUtils.isEmpty(name) || !operations.containsKey(name)) {
                 throw new OperationNotFoundException("Not found", name);
             }
             for (final ServiceMeta.Operation operation : operations.get(name)) {
-                if (isSuit(operation)) {
+                if (isSuit(operation, params)) {
                     log.debug("Found appropriate operation '{}'", operation);
                     return operation;
                 }
@@ -281,25 +398,35 @@ public class ServiceInstancesPool implements ServiceMeta {
             throw new OperationParameterTypeIsInvalidException("Not found", name, 0);
         }
 
-        private boolean isSuit(ServiceMeta.Operation operation) {
-            if (ObjectUtils.isEmpty(parameter)) {
+        private boolean isSuit(ServiceMeta.Operation operation, Object[] params) {
+            if (ObjectUtils.isEmpty(params) || operation.getParameterClass() == Void.class) {
                 // stop processing parameters
-                return operation.getParameterClass().equals(Void.class);
+                log.debug("No actual parameters in call operation '{}'", name);
+                return operation.getParameterClass() == Void.class;
             }
-            if (!operation.getParameterClass().isInstance(parameter)) {
+            final Object obligateParameter = params[0];
+            if (!operation.getParameterClass().isInstance(obligateParameter)) {
                 log.debug("Incompatible classes of first operation parameter");
                 return false;
             }
+            if (params.length == 1) {
+                log.debug("Only one actual parameter for operation '{}' ({})", name, obligateParameter);
+                return true;
+            }
+            final Object extraParameter = params[1];
             if (ObjectUtils.isEmpty(extraParameter)) {
                 // stop processing parameters
                 return operation.getExtraParameterClasses().length == 0;
             }
-            if (!operation.getExtraParameterClasses()[0].isInstance(extraParameter)) {
+            if (!ObjectUtils.isEmpty(operation.getExtraParameterClasses()) && !operation.getExtraParameterClasses()[0].isInstance(extraParameter)) {
                 log.debug("Incompatible classes of second operation parameter");
                 return false;
             }
+            log.debug("Passed two actual parameter for operation '{}' ({}, {})", name, obligateParameter, extraParameter);
             return true;
         }
 
     }
+
 }
+

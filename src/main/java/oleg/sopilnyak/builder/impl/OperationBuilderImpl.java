@@ -5,15 +5,17 @@ import oleg.sopilnyak.repository.ServiceMeta;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.Objects;
 
 public class OperationBuilderImpl implements OperationBuilder {
     private String name;
-    private Class<?> parameterClass;
-    private Class<?> returnClass;
-    private Class<?>[] extraParameterClasses;
+    private Class<?> parameterClass = Void.class;
+    private Class<?> returnClass = Void.class;
+    private Class<?>[] extraParameterClasses = new Class[0];
     private Method operationMethod;
 
     public OperationBuilderImpl(ServiceMeta.Operation operation) {
+        assert operation != null;
         name = operation.getName();
         parameterClass = operation.getParameterClass();
         extraParameterClasses = operation.getExtraParameterClasses();
@@ -150,6 +152,25 @@ public class OperationBuilderImpl implements OperationBuilder {
         @Override
         public Method getOperationMethod() {
             return operationMethod;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            OperationImpl operation = (OperationImpl) o;
+            return Objects.equals(name, operation.name) &&
+                    Objects.equals(parameterClass, operation.parameterClass) &&
+                    Objects.equals(resultClass, operation.resultClass) &&
+                    Arrays.equals(extraParameterClasses, operation.extraParameterClasses);
+        }
+
+        @Override
+        public int hashCode() {
+
+            int result = Objects.hash(name, parameterClass, resultClass);
+            result = 31 * result + Arrays.hashCode(extraParameterClasses);
+            return result;
         }
 
         @Override

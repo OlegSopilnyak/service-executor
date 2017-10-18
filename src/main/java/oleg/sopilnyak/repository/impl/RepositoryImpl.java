@@ -3,11 +3,11 @@ package oleg.sopilnyak.repository.impl;
 import lombok.extern.slf4j.Slf4j;
 import oleg.sopilnyak.builder.ServiceBuilder;
 import oleg.sopilnyak.builder.impl.ServiceBuilderImpl;
-import oleg.sopilnyak.call.Call;
 import oleg.sopilnyak.exception.NoRegisteredServiceException;
 import oleg.sopilnyak.exception.ServiceAlreadyRegisteredException;
 import oleg.sopilnyak.exception.ServiceCallException;
 import oleg.sopilnyak.repository.Repository;
+import oleg.sopilnyak.repository.ServiceImpl;
 import oleg.sopilnyak.repository.ServiceMeta;
 import org.springframework.beans.factory.annotation.Value;
 
@@ -24,7 +24,7 @@ import java.util.function.Function;
 @Slf4j
 public class RepositoryImpl implements Repository{
     private final Lock writePoolLock = new ReentrantLock();
-    private final Map<String, ServiceInstancesPool> pools = new ConcurrentHashMap<>();
+    private final Map<String, ServiceImpl> pools = new ConcurrentHashMap<>();
 
     @Value("${service.pool.start.instances:2}")
     private int minimumActiveInstances;
@@ -35,36 +35,30 @@ public class RepositoryImpl implements Repository{
      * Shutdown all service pools
      */
     public void shutdown(){
-        pools.values().forEach(ServiceInstancesPool::shutdown);
+        pools.values().forEach(ServiceImpl::shutdown);
     }
     /**
-     * Prepare call to remote operation
+     * Get implementation of service to invoke operations
      *
-     * @param serviceInterface parent class of service
-     * @return call operation entity
-     * @throws NoRegisteredServiceException if no registered serviceInterface
+     * @param serviceID id of registered service
+     * @return registered service operations
+     * @throws NoRegisteredServiceException
      */
     @Override
-    public Call prepareCall(Class serviceInterface) throws NoRegisteredServiceException {
-        final Optional<ServiceInstancesPool> optional = Optional.ofNullable(pools.get(serviceInterface.getName()));
-        return optional
-                .orElseThrow(()-> new NoRegisteredServiceException("No registered service of "+serviceInterface))
-                .dedicateCall();
+    public ServiceImpl getService(String serviceID) throws NoRegisteredServiceException {
+        return getOptionalPool(serviceID);
     }
 
     /**
-     * Prepare call to remote operation
+     * Get implementation of service to invoke operations
      *
-     * @param serviceID service-id (usually name of service class but not obviously)
-     * @return call operation entity
-     * @throws NoRegisteredServiceException if no registered service with that ID
+     * @param serviceInterface parent class of service
+     * @return registered service operations
+     * @throws NoRegisteredServiceException
      */
     @Override
-    public Call prepareCall(String serviceID) throws NoRegisteredServiceException {
-        final Optional<ServiceInstancesPool> optional = Optional.ofNullable(pools.get(serviceID));
-        return optional
-                .orElseThrow(()-> new NoRegisteredServiceException("No registered service with id: "+serviceID))
-                .dedicateCall();
+    public ServiceImpl getService(Class serviceInterface) throws NoRegisteredServiceException {
+        return getOptionalPool(serviceInterface);
     }
 
     /**
@@ -76,7 +70,7 @@ public class RepositoryImpl implements Repository{
      */
     @Override
     public ServiceMeta getRegistered(Class serviceInterface) throws NoRegisteredServiceException {
-        return null;
+        return getService(serviceInterface).getMeta();
     }
 
     /**
@@ -88,7 +82,7 @@ public class RepositoryImpl implements Repository{
      */
     @Override
     public ServiceMeta getRegistered(String serviceID) throws NoRegisteredServiceException {
-        return null;
+        return getService(serviceID).getMeta();
     }
 
     /**
@@ -142,4 +136,17 @@ public class RepositoryImpl implements Repository{
         pool.setMaximumInstances(maximumActiveInstances);
         return pool;
     }
+    private ServiceImpl getOptionalPool(String serviceID) throws NoRegisteredServiceException {
+        final Optional<ServiceImpl> optional = Optional.ofNullable(pools.get(serviceID));
+        return optional
+                .orElseThrow(()-> new NoRegisteredServiceException("No registered service with id: "+serviceID))
+                ;
+    }
+    private ServiceImpl getOptionalPool(Class serviceInterface) throws NoRegisteredServiceException {
+        final Optional<ServiceImpl> optional = Optional.ofNullable(pools.get(serviceInterface.getName()));
+        return optional
+                .orElseThrow(() -> new NoRegisteredServiceException("No registered service of " + serviceInterface))
+                ;
+    }
+
 }

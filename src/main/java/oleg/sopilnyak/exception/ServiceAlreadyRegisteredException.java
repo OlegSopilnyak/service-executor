@@ -3,7 +3,7 @@ package oleg.sopilnyak.exception;
 /**
  * Exception throws during trying to register already registered service
  */
-public class ServiceAlreadyRegisteredException extends Exception{
+public class ServiceAlreadyRegisteredException extends ServiceRegistrationException{
     /**
      * Constructs a new exception with the specified detail message.  The
      * cause is not initialized, and may subsequently be initialized by

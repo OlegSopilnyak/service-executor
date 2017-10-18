@@ -1,9 +1,9 @@
 package oleg.sopilnyak.exception;
 
 /**
- * Exception throws when requested call for not registered service
+ * Exception during registration process
  */
-public class NoRegisteredServiceException extends ServiceRegistrationException {
+public class ServiceRegistrationException extends Exception {
     /**
      * Constructs a new exception with the specified detail message.  The
      * cause is not initialized, and may subsequently be initialized by
@@ -12,7 +12,7 @@ public class NoRegisteredServiceException extends ServiceRegistrationException {
      * @param message the detail message. The detail message is saved for
      *                later retrieval by the {@link #getMessage()} method.
      */
-    public NoRegisteredServiceException(String message) {
+    public ServiceRegistrationException(String message) {
         super(message);
     }
 
@@ -30,7 +30,7 @@ public class NoRegisteredServiceException extends ServiceRegistrationException {
      *                unknown.)
      * @since 1.4
      */
-    public NoRegisteredServiceException(String message, Throwable cause) {
+    public ServiceRegistrationException(String message, Throwable cause) {
         super(message, cause);
     }
 }

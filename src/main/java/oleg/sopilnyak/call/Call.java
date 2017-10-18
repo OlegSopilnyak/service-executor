@@ -3,34 +3,31 @@ package oleg.sopilnyak.call;
 import oleg.sopilnyak.exception.ServiceCallException;
 
 /**
- * Service entity to execute registered service call
+ * Service entity to execute registered operation of service
  */
 public interface Call<R, P> {
     /**
-     * Setup name of operation
-     * @param name name of service operation to execute
-     * @return reference to entity
+     * To get a name of called operation
+     *
+     * @return the name of operation
      */
-    Call operation(String name);
+    String getOperationName();
 
     /**
-     * Setup parameter of service method
-     * @param param actual parameter
-     * @return reference to entity
-     */
-    Call parameter(P param);
-
-    /**
-     * Setup extra-parameters of service method
-     * @param extra actual parameter
-     * @return reference to entity
-     */
-    Call parameterEx(Object extra);
-
-    /**
-     * Execute remote call and return the result
+     * To invoke operation of service
+     *
+     * @param param obligated parameter of operation
+     * @param extra extra parameters of operation
      * @return result of operation
-     * @throws ServiceCallException if something went wrong
+     * @throws ServiceCallException throws if cannot execute operation
      */
-    R execute() throws ServiceCallException;
+    R invoke(P param, Object... extra) throws ServiceCallException;
+
+    /**
+     * To invoke operation of service without parameters
+     *
+     * @return result of operation
+     * @throws ServiceCallException throws if cannot execute operation
+     */
+    R invoke() throws ServiceCallException;
 }

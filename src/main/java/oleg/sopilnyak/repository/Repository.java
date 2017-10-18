@@ -1,7 +1,6 @@
 package oleg.sopilnyak.repository;
 
 import oleg.sopilnyak.builder.ServiceBuilder;
-import oleg.sopilnyak.call.Call;
 import oleg.sopilnyak.exception.NoRegisteredServiceException;
 import oleg.sopilnyak.exception.ServiceAlreadyRegisteredException;
 import oleg.sopilnyak.exception.ServiceCallException;
@@ -13,21 +12,22 @@ import java.util.function.Function;
  * @see oleg.sopilnyak.call.Call
  */
 public interface Repository {
-    /**
-     * Prepare call to remote operation
-     * @param serviceInterface parent class of service
-     * @return call operation entity
-     * @throws NoRegisteredServiceException if no registered serviceInterface
-     */
-    Call prepareCall(Class serviceInterface) throws NoRegisteredServiceException;
 
     /**
-     * Prepare call to remote operation
-     * @param serviceID service-id (usually name of service class but not obviously)
-     * @return call operation entity
-     * @throws NoRegisteredServiceException if no registered service with that ID
+     * Get implementation of service to invoke operations
+     * @param serviceID id of registered service
+     * @return registered service operations
+     * @throws NoRegisteredServiceException
      */
-    Call prepareCall(String serviceID) throws NoRegisteredServiceException;
+    ServiceImpl getService(String serviceID) throws NoRegisteredServiceException;
+
+    /**
+     * Get implementation of service to invoke operations
+     * @param serviceInterface parent class of service
+     * @return registered service operations
+     * @throws NoRegisteredServiceException
+     */
+    ServiceImpl getService(Class serviceInterface) throws NoRegisteredServiceException;
 
     /**
      * To get meta-information about registered service
