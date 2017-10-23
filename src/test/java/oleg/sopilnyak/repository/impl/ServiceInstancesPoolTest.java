@@ -16,10 +16,14 @@ public class ServiceInstancesPoolTest {
 
     private ServiceInstancesPool pool;
 
+    private static Object apply(Object facade) {
+        return new ServiceFacadeImpl();
+    }
+
     @Before
     public void setUp(){
         ServiceMeta meta = makeServiceMeta();
-        pool = new ServiceInstancesPool(meta, facade-> new ServiceFacadeImpl());
+        pool = new ServiceInstancesPool(meta, ServiceInstancesPoolTest::apply);
     }
 
     @Test
@@ -52,7 +56,7 @@ public class ServiceInstancesPoolTest {
     }
 
     @Test
-    public void sequentialCall() throws Exception {
+    public void simpleServiceSequentialCalls() throws Exception {
         pool.start();
 
         {
@@ -107,19 +111,19 @@ public class ServiceInstancesPoolTest {
 
         @Override
         public void method1() throws InterruptedException {
-            TimeUnit.MILLISECONDS.sleep(100);;
+            TimeUnit.MILLISECONDS.sleep(100);
         }
 
         @Override
         public String method1(String one) throws InterruptedException {
-            TimeUnit.MILLISECONDS.sleep(100);;
+            TimeUnit.MILLISECONDS.sleep(100);
             method1_state = one;
             return "State is :"+one;
         }
 
         @Override
         public Double method2(Integer i) throws InterruptedException {
-            TimeUnit.MILLISECONDS.sleep(100);;
+            TimeUnit.MILLISECONDS.sleep(100);
             return i.doubleValue();
         }
     }

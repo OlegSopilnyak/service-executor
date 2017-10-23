@@ -8,7 +8,7 @@ import oleg.sopilnyak.exception.ServiceCallException;
 import java.util.function.Function;
 
 /**
- * Service entity repository to get Call for service remote operation call
+ * Service entity repository to get Call-entity for service remote operation call
  * @see oleg.sopilnyak.call.Call
  */
 public interface Repository {
@@ -17,7 +17,7 @@ public interface Repository {
      * Get implementation of service to invoke operations
      * @param serviceID id of registered service
      * @return registered service operations
-     * @throws NoRegisteredServiceException
+     * @throws NoRegisteredServiceException throw if cannot get service-impl
      */
     ServiceImpl getService(String serviceID) throws NoRegisteredServiceException;
 
@@ -25,7 +25,7 @@ public interface Repository {
      * Get implementation of service to invoke operations
      * @param serviceInterface parent class of service
      * @return registered service operations
-     * @throws NoRegisteredServiceException
+     * @throws NoRegisteredServiceException throw if cannot get service-impl
      */
     ServiceImpl getService(Class serviceInterface) throws NoRegisteredServiceException;
 
