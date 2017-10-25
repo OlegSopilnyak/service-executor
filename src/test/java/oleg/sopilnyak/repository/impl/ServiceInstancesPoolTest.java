@@ -4,11 +4,19 @@ import oleg.sopilnyak.builder.OperationBuilder;
 import oleg.sopilnyak.builder.ServiceBuilder;
 import oleg.sopilnyak.builder.impl.ServiceBuilderImpl;
 import oleg.sopilnyak.call.Call;
+import oleg.sopilnyak.exception.ServiceCallException;
 import oleg.sopilnyak.repository.ServiceMeta;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static org.junit.Assert.*;
 
@@ -74,6 +82,55 @@ public class ServiceInstancesPoolTest {
             Object result = serviceCall.invoke();
             assertEquals(result, serviceCall.invoke(100));
         }
+    }
+
+    @Test
+    public void simpleServiceParallelCalls() throws Exception {
+        pool.start();
+        ScheduledExecutorService executorService = new ScheduledThreadPoolExecutor(10);
+        List<CompletableFuture> futures = new ArrayList<>(20);
+        Call stringMethod1 = pool.getOperationCall("method1");
+        Call doubleMethod2 = pool.getOperationCall("method2");
+        Call voidMethod1 = pool.getOperationCall("method1");
+        try{
+            System.out.println(new Date()+" running 60 parallel calls");
+            long mark = System.currentTimeMillis();
+            for(int i=1;i<=20;i++) {
+                CompletableFuture f1 = CompletableFuture.runAsync(() -> {
+                    try {
+                        stringMethod1.invoke("Hi");
+                    } catch (ServiceCallException e) {
+                        System.err.println("stringMethod1");
+                        e.printStackTrace();
+                    }
+                }, executorService);
+                CompletableFuture f2 = CompletableFuture.runAsync(() -> {
+                    try {
+                        doubleMethod2.invoke(2000);
+                    } catch (ServiceCallException e) {
+                        System.err.println("doubleMethod2");
+                        e.printStackTrace();
+                    }
+                }, executorService);
+                CompletableFuture f3 = CompletableFuture.runAsync(() -> {
+                    try {
+                        voidMethod1.invoke();
+                    } catch (ServiceCallException e) {
+                        System.err.println("voidMethod1");
+                        e.printStackTrace();
+                    }
+                }, executorService);
+                futures.add(CompletableFuture.allOf(f1, f2, f3));
+            }
+            System.out.println(System.currentTimeMillis()-mark + " msec spend to run");
+            mark = System.currentTimeMillis();
+            futures.stream().peek(f-> f.join()).collect(Collectors.toList());
+            System.out.println(System.currentTimeMillis()-mark + " msec spend to execute.");
+        }finally {
+            executorService.shutdown();
+        }
+        assertEquals(0, pool.getInAction().size());
+        assertEquals(10, pool.getAvailable().size());
     }
 
     @Test

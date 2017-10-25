@@ -285,10 +285,11 @@ public class ServiceInstancesPool implements ServiceMeta, ServiceImpl {
     }
 
     private void waitForFreeInstances(Lock instancesLock) {
+        log.debug("******* Waiting for free instance");
         while (inAction.size() >= maximumInstances) {
             instancesLock.unlock();
             try {
-                TimeUnit.SECONDS.sleep(2);
+                TimeUnit.MILLISECONDS.sleep(500);
             } catch (InterruptedException e) {
                 log.error("Sleep exception", e);
             }
