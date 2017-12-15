@@ -88,14 +88,14 @@ public class ServiceInstancesPoolTest {
     public void simpleServiceParallelCalls() throws Exception {
         pool.start();
         ScheduledExecutorService executorService = new ScheduledThreadPoolExecutor(10);
-        List<CompletableFuture> futures = new ArrayList<>(20);
+        List<CompletableFuture> futures = new ArrayList<>(60);
         Call stringMethod1 = pool.getOperationCall("method1");
         Call doubleMethod2 = pool.getOperationCall("method2");
         Call voidMethod1 = pool.getOperationCall("method1");
         try{
             System.out.println(new Date()+" running 60 parallel calls");
             long mark = System.currentTimeMillis();
-            for(int i=1;i<=20;i++) {
+            for(int i=1;i<=60;i++) {
                 CompletableFuture f1 = CompletableFuture.runAsync(() -> {
                     try {
                         stringMethod1.invoke("Hi");

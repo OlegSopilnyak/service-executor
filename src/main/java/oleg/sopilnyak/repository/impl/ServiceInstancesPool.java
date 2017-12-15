@@ -13,6 +13,7 @@ import org.springframework.util.StringUtils;
 
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -20,7 +21,6 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static java.util.Arrays.asList;
-import static java.util.stream.Collectors.toList;
 
 /**
  * Service service-instances pool
@@ -34,9 +34,13 @@ public class ServiceInstancesPool implements ServiceMeta, ServiceImpl {
     // map of allowed service operations
     private Map<String, Set<ServiceMeta.Operation>> operations = new HashMap<>();
 
+    private final Semaphore serviceBuilderSemaphore = new Semaphore(1);
+    // minimum pre-run instances of service
     private int minimumInstances = 2;
+    // maximum instances to execute
     private int maximumInstances = 10;
-    private Function instanceBuilder;
+    // duration between remote calls
+    private long exclusiveDelayValue = 300;
 
     // set of available instances of service instances
     private Stack available = new Stack();
@@ -45,6 +49,8 @@ public class ServiceInstancesPool implements ServiceMeta, ServiceImpl {
 
     // Look for instances containers
     private final Lock instancesLock = new ReentrantLock();
+    // builder of service instance
+    private Function instanceBuilder;
 
     public ServiceInstancesPool(ServiceMeta service, Function builder) {
         serviceId = service.getId();
@@ -98,6 +104,10 @@ public class ServiceInstancesPool implements ServiceMeta, ServiceImpl {
         this.maximumInstances = maximumInstances;
     }
 
+    public void setExclusiveDelayValue(long exclusiveDelayValue) {
+        this.exclusiveDelayValue = exclusiveDelayValue;
+    }
+
     /**
      * Get id of service (usually it name of interface class)
      *
@@ -149,7 +159,7 @@ public class ServiceInstancesPool implements ServiceMeta, ServiceImpl {
      */
     @Override
     public Call[] getCallOperations() {
-        return operations.keySet().stream().map(OperationCall::new).collect(toList()).toArray(new Call[0]);
+        return operations.keySet().stream().map(OperationCall::new).toArray(Call[]::new);
     }
 
     /**
@@ -163,7 +173,7 @@ public class ServiceInstancesPool implements ServiceMeta, ServiceImpl {
                 .flatMap(Collection::stream)
                 .map(OperationBuilderImpl::new)
                 .map(OperationBuilderImpl::build)
-                .collect(toList()).toArray(new Operation[0]);
+                .toArray(Operation[]::new);
     }
 
     // private methods
@@ -229,6 +239,7 @@ public class ServiceInstancesPool implements ServiceMeta, ServiceImpl {
                 log.warn("Reject last {} actual parameters for operation .{}. of service '{}'", parameters.length-methodParametersCount, call.getOperationName(), serviceId);
                 parameters = Arrays.copyOf(parameters, methodParametersCount);
             }
+            exclusiveDelay(exclusiveDelayValue);
             // execute operation method
             final Object result = operationMethod.invoke(serviceInstance, parameters);
             // return execution result
@@ -274,13 +285,35 @@ public class ServiceInstancesPool implements ServiceMeta, ServiceImpl {
         }
     }
 
+    private void exclusiveDelay(long delay){
+        if (delay <= 0L){
+            return;
+        }
+        try {
+            serviceBuilderSemaphore.acquire();
+            TimeUnit.MILLISECONDS.sleep(delay);
+        } catch (Exception e) {
+            log.error("Cannot exclusive delay", e);
+        } finally {
+            serviceBuilderSemaphore.release();
+        }
+    }
+
     private void registerServiceInstance() throws InvalidServiceMetaInformation {
         log.debug("Making new service instance for Id: {} / Facade: '{}'", serviceId, interfaceClass);
-        final Object serviceInstance = instanceBuilder.apply(interfaceClass);
-        if (interfaceClass.isInstance(serviceInstance)) {
-            available.push(serviceInstance);
-        } else {
-            throw new InvalidServiceMetaInformation("Incompatible facade interface and built realization.");
+        serviceBuilderSemaphore.acquireUninterruptibly();
+        try {
+            TimeUnit.MILLISECONDS.sleep(exclusiveDelayValue);
+            final Object serviceInstance = instanceBuilder.apply(interfaceClass);
+            if (interfaceClass.isInstance(serviceInstance)) {
+                available.push(serviceInstance);
+            } else {
+                throw new InvalidServiceMetaInformation("Incompatible facade interface and built realization.");
+            }
+        } catch (InterruptedException e) {
+            log.error("Service Instance Builder Timeout fail", e);
+        } finally {
+            serviceBuilderSemaphore.release();
         }
     }
 
@@ -308,9 +341,12 @@ public class ServiceInstancesPool implements ServiceMeta, ServiceImpl {
         try {
             if (inAction.remove(serviceInstance) && active) {
                 available.push(serviceInstance);
+                TimeUnit.MILLISECONDS.sleep(20);
             } else {
                 log.error("Strange service instance {}", serviceInstance);
             }
+        } catch (InterruptedException e) {
+            log.error("Free Instance Timeout.", e);
         } finally {
             instancesLock.unlock();
         }
