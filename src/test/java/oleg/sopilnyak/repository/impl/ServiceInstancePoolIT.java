@@ -34,15 +34,10 @@ public class ServiceInstancePoolIT {
 //        System.setProperty("com.sun.xml.internal.ws.transport.http.HttpAdapter.dump", "true");
 //    }
 
-    private static Object apply(Class facade) {
-        return new Periodictable().getPeriodictableSoap();
-    }
-
     @Before
     public void setUp() throws Exception {
         ServiceMeta meta = makeWebServiceMeta();
-        pool = new ServiceInstancesPool(meta, (clazz) -> ServiceInstancePoolIT.apply((Class) clazz));
-//        pool.setMaximumInstances(5);
+        pool = new ServiceInstancesPool(meta, (clazz) -> new Periodictable().getPeriodictableSoap());
     }
 
     @Test
