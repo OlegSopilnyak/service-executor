@@ -13,7 +13,7 @@ Build tool **gradle**.
 - ##### ServiceMeta - special class to describe service for pool.    
 Example of build `ServiceMeta` for Service "**PeriodictableSoap**".  
 
-       ServiceBuilder builder = new ServiceBuilderImpl().interfaceClass(PeriodictableSoap.class);  
+      ServiceBuilder builder = new ServiceBuilderImpl().interfaceClass(PeriodictableSoap.class);  
       OperationBuilder oBuilder = builder.id("TestWebFacade").operationBuilder();  
       builder.operations(
         oBuilder.name("getAtoms").result(String.class).build(),  
