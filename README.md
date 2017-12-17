@@ -4,8 +4,8 @@
 Service should registered in pool once then consumer can get Call-entity anytime 
 to execute WS-RPC via SOAP protocol or any other one.  
 
-Language **Java8**
-Libraries **Spring Core, Spring Context, JDOM2**
+Language **Java8**  
+Libraries **Spring Core, Spring Context, JDOM2**  
 Build tool **gradle**.
 
 ### There are two things to run services pool.  
