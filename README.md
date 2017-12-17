@@ -1,8 +1,11 @@
 # service-executor
 Pool of SOAP services to execute<br/>
+Artifact to economize computer resources.<br>
 Service registered in pool once then consumer can get Call-entity to execute<br/>
 SOAP service operation call.<br/>
 
+Language **Java8**<br>
+Libraries **Spring Core, Spring Context, JDOM2**<br>
 Build tool **gradle**.
 
 There are two things to run services pool.<br/>
@@ -30,6 +33,6 @@ pool = new ServiceInstancesPool(meta, (clazz) -> new Periodictable().getPeriodic
     - **minimumInstances** - minimal quantity of service instances which will start;
     - **maximumInstances** - maximum capacity of pool;
     - **exclusiveDelayValue** - delay in milliseconds between remote call. 
+4. Integration test **ServiceInstancePoolIT** demonstrate the usage of library.<br>    
     
-    
-    If you have any question, please contact me directly by oleg.sopilnyak@gmail.com
+`    If you have any question, please contact me directly by oleg.sopilnyak@gmail.com`
