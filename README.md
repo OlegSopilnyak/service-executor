@@ -1,8 +1,8 @@
 # service-executor
 ## Pool of SOAP services to execute ones
 ### Artifact to economize computer resources.
-Service should registered in pool once then consumer can get Call-entity anytime   
-to execute WS-RPC via SOAP protocol or any other one.  
+Service should registered in pool once then consumer can get Call-entity for anytime   
+execution of WS-RPC via SOAP protocol or any other one.  
 
 Language **Java8**  
 Libraries **Spring Core, Spring Context, JDOM2**  
